@@ -3,23 +3,34 @@
 #include <omp.h>
 
 
-struct CrsMatrix
+struct MyMatrix
 {
     int N;
-    int NZ;
-    double* elements;
-    int* col;
-    int* row;
     int size;
+
+    double* elements;
+
+    MyMatrix(int n): N(n) 
+    {
+        elements = new double[n * n];
+        std::fill(elements, elements + n * n, 0.);
+    }
+
+    double* operator[](int i) {
+        return &elements[i* N];
+    }
+
 };
+
+
 
 void test_1();
 void test_2();
-void test_3(CrsMatrix A, double* b);
+void test_3(MyMatrix A, double* b);
 
-CrsMatrix& readFile()
+MyMatrix& readFile()
 {
-    CrsMatrix matrix;
+    
     std::ifstream file("bcsstk38.mtx");
     int num_row, num_col, num_lines;
 
@@ -30,12 +41,8 @@ CrsMatrix& readFile()
     file >> num_row >> num_col >> num_lines;
     std::cout << num_col << "     " << num_row;
 
-    matrix.N = num_col;
-    matrix.NZ = num_lines*2;
-    matrix.elements = new double[num_lines*2];
+    MyMatrix matrix(num_col);
     matrix.size = num_lines * 2;
-    matrix.col = new int[num_lines*2];
-    matrix.row = new int[num_lines*2];
 
 
     // Create 2D array and fill with zeros
@@ -46,14 +53,10 @@ CrsMatrix& readFile()
         double data;
         int row, col;
         file >> row >> col >> data;
-        matrix.col[l] = col;
-        matrix.row[l] = row;
-        matrix.elements[l] = data;
+        matrix[row-1][col-1] = data;
 
         //так как симметричная
-        matrix.col[l+ num_lines] = row;
-        matrix.row[l + num_lines] = col;
-        matrix.elements[l + num_lines] = data;
+        matrix[col-1][row-1] = data;
     }
 
     file.close();
@@ -90,14 +93,23 @@ int main()
     */
     
     // Вычисляем сумму квадратов элементов вектора F
+    /*
     CrsMatrix matrix = readFile();
     double* b = new double[matrix.N];
     for (size_t i = 0; i < matrix.N; i++)
     {
         b[i] = std::rand();
     }
-    test_3(matrix, b);
+    test_3(matrix, b);*/
 
+
+    MyMatrix matrix = readFile();
+    double* b = new double[matrix.N];
+    for (size_t i = 0; i < matrix.N; i++)
+    {
+        b[i] = std::rand();
+    }
+    test_3(matrix, b); 
 
     /*
     // Задаем начальное приближение корней
@@ -238,16 +250,16 @@ void test_2()
 }
 
 //test градиента
-void test_3(CrsMatrix A, double* b)
+
+void test_3(MyMatrix A, double* b)
 {
     omp_set_dynamic(0);
     omp_set_num_threads(2);
 
-    int size = A.size;
     double* x_k_prev = new double[A.N];
     std::fill(x_k_prev, x_k_prev + A.N, 0.);
 
-    double count = 1;
+    double count = 10;
     double res = 0;
     double* res1 = new double[A.N];
     double* res2 = new double[A.N];
@@ -259,18 +271,21 @@ void test_3(CrsMatrix A, double* b)
     std::cout << "считаю\n";
     for (size_t k = 0; k < count; k++)
     {
-        for (int j = 0; j < size; j++) {
-            auto el = A.elements[j];
+        for (int i = 0; i < A.N; i++)
+        {
             tmp = 0;
-            for (int i = 0; i < A.N; i++)
-            {
-                tmp += el * b[i];
+            for (int j = 0; j < A.N; j++) {
+                auto el = A[i][j];
+
+                tmp += el * b[j];
+
+
             }
-            res1[A.elements] = tmp;
+            res1[i] = tmp;
         }
     }
     double kok = omp_get_wtime() - start;
-    std::cout << res << "\n";
+    //std::cout << kok << "\n";
     res = 0;
 
     start = omp_get_wtime();
@@ -278,25 +293,33 @@ void test_3(CrsMatrix A, double* b)
     {
 #pragma omp parallel shared(res) private(tmp)
         {
-#pragma omp for schedule(dynamic, chunk) reduction(+:res) nowait
-            for (int i = 0; i < size; i++) {
-                auto el = A.elements[i];
+#pragma omp for schedule(dynamic, chunk) nowait
+            for (int i = 0; i < A.N; i++)
+            {
                 tmp = 0;
-                for (int j = 0; j < A.N; j++)
-                {
+                for (int j = 0; j < A.N; j++) {
+                    auto el = A[i][j];
+
                     tmp += el * b[j];
+
+
                 }
                 res2[i] = tmp;
             }
         }
     }
-    std::cout << "asdasda";
     std::cout << kok / (omp_get_wtime() - start) << "\n" << res;
+
+    for (size_t i = 0; i < A.N; i++)
+    {
+        if (res1[i] != res2[i])
+            std::cout << "hueta";
+    }
 }
 
 
 
-void grad(CrsMatrix A, double* b, int* jptr, int* iptr, int size, int pot, double toch, int size1)
+void grad(MyMatrix A, double* b, int* jptr, int* iptr, int size, int pot, double toch, int size1)
 {
     double start = omp_get_wtime();
     double* x_k = new double[size];
