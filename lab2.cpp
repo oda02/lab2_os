@@ -27,6 +27,7 @@ struct MyMatrix
 void test_1();
 void test_2();
 void test_3(MyMatrix A, double* b);
+void grad(MyMatrix A, double* b);
 
 MyMatrix& readFile()
 {
@@ -103,13 +104,31 @@ int main()
     test_3(matrix, b);*/
 
 
-    MyMatrix matrix = readFile();
+    /*MyMatrix matrix = readFile();
     double* b = new double[matrix.N];
     for (size_t i = 0; i < matrix.N; i++)
     {
         b[i] = std::rand();
-    }
-    test_3(matrix, b); 
+    }*/
+    //test_3(matrix, b); 
+
+
+    MyMatrix matrix(3);
+    matrix[0][0] = 2;
+    matrix[0][1] = 1;
+    matrix[0][2] = 1;
+    matrix[1][0] = 1;
+    matrix[1][1] = -1;
+    matrix[1][2] = 0;
+    matrix[2][0] = 3;
+    matrix[2][1] = -1;
+    matrix[2][2] = 2;
+
+    double* b = new double[matrix.N];
+    b[0] = 2;
+    b[1] = -2;
+    b[2] = 2;
+    grad(matrix, b);
 
     /*
     // Задаем начальное приближение корней
@@ -163,7 +182,7 @@ void test_1()
 {
     
     
-    int size = 100000;
+    int size = 8200;
     double* a = new double[size];
 
     double* b = new double[size];
@@ -249,12 +268,12 @@ void test_2()
 
 }
 
-//test градиента
+//test градиента  ~~1.95
 
 void test_3(MyMatrix A, double* b)
 {
     omp_set_dynamic(0);
-    omp_set_num_threads(2);
+    omp_set_num_threads(1);
 
     double* x_k_prev = new double[A.N];
     std::fill(x_k_prev, x_k_prev + A.N, 0.);
@@ -277,11 +296,11 @@ void test_3(MyMatrix A, double* b)
             for (int j = 0; j < A.N; j++) {
                 auto el = A[i][j];
 
-                tmp += el * b[j];
+                tmp += el * x_k_prev[j];
 
 
             }
-            res1[i] = tmp;
+            res1[i] = tmp - b[i];
         }
     }
     double kok = omp_get_wtime() - start;
@@ -300,11 +319,11 @@ void test_3(MyMatrix A, double* b)
                 for (int j = 0; j < A.N; j++) {
                     auto el = A[i][j];
 
-                    tmp += el * b[j];
+                    tmp += el * x_k_prev[j];
 
 
                 }
-                res2[i] = tmp;
+                res2[i] = tmp - b[i];
             }
         }
     }
@@ -319,35 +338,216 @@ void test_3(MyMatrix A, double* b)
 
 
 
-void grad(MyMatrix A, double* b, int* jptr, int* iptr, int size, int pot, double toch, int size1)
+void grad(MyMatrix A, double* b)
 {
+    int size = A.N;
     double start = omp_get_wtime();
     double* x_k = new double[size];
-    double* x_k_prev = new double[size];
+    //double* x_k_prev = new double[size];
 
-    double* d_k = new double[size];
-    double* d_k_prev = new double[size];
+    double* s_k = new double[size];
+    //double* s_k_prev = new double[size];
 
-    double* g_k = new double[size];
-    double* g_k_prev = new double[size];
+    double* f_k = new double[size];
+    //double* f_k_prev = new double[size];
 
-    float* Zk = new float[size];
-    float* Rk = new float[size];
-    float* Sz = new float[size];
-    float alpha, beta, mf;
-    float Spr, Spr1, Spz;
-    int i, j, kl = 1;
-    double max_iter = size;
+    double* tmp_vec = new double[size];
+
+    double tmp, scalar_p1, scalar_p2, beta_znam;
+    int chunk;
+
 
     //Начальное приближение
-    std::fill(x_k_prev, x_k_prev + size, 0.);
-    std::fill(d_k_prev, d_k_prev + size, 0.);
+    std::fill(x_k, x_k + size, 0.);
     for (size_t i = 0; i < size; i++)
-        g_k_prev[i] = -b[i];
+    {
+        s_k[i] = b[i];
+        f_k[i] = -b[i];
+    }
+
+    //вычислим x_1
+    scalar_p1 = 0;
+    scalar_p2 = 0;
+
+    //Знаменатель Матрица на вектор
+    chunk = 50;
+#pragma omp parallel shared(s_k) private(tmp)
+    {
+#pragma omp for schedule(dynamic, chunk) nowait
+        for (int i = 0; i < A.N; i++)
+        {
+            tmp = 0;
+            for (int j = 0; j < A.N; j++) {
+                auto el = A[i][j];
+
+                tmp += el * s_k[j];
 
 
-    omp_set_num_threads(1);
+            }
+            tmp_vec[i] = tmp;
+        }
+    }
 
+    // Знаменатель скалярное
+    chunk = 1000;
+#pragma omp parallel shared(scalar_p2) private(tmp)
+    {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p2) nowait
+        for (int i = 0; i < size; i++) {
+            tmp = s_k[i] * tmp_vec[i];
+            scalar_p2 += tmp;
+        }
+    }
+
+
+    //Числитель
+
+#pragma omp parallel shared(scalar_p1) private(tmp)
+    {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p1) nowait
+        for (int i = 0; i < size; i++) {
+            tmp = f_k[i] * s_k[i];
+            scalar_p1 += tmp;
+        }
+    }
+
+    tmp = scalar_p1 / scalar_p2; //Дробь
+    //Новый x_k
+
+    for (int i = 0; i < size; i++)
+    {
+        x_k[i] = x_k[i] - tmp * s_k[i];
+    }
+
+
+
+
+    int Iteration = 0;
+    do {
+        Iteration++;
+
+        //скалярное произведение знаменатель  beta_znam
+        chunk = 1000;
+        beta_znam = 0;
+#pragma omp parallel shared(beta_znam) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:beta_znam) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = f_k[i] * f_k[i];
+                beta_znam += tmp;
+            }
+        }
+
+        //Вычисление градиента f
+        chunk = 50;
+#pragma omp parallel shared(f_k) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) nowait
+            for (int i = 0; i < A.N; i++)
+            {
+                tmp = 0;
+                for (int j = 0; j < A.N; j++) {
+                    auto el = A[i][j];
+
+                    tmp += el * x_k[j];
+
+
+                }
+                f_k[i] = tmp - b[i];
+            }
+        }
+
+
+        //Вычисление вектора направления
+        chunk = 1000;
+        scalar_p1 = 0;
+        scalar_p2 = 0;
+        //скалярное произведение числитель  scalar_p1
+#pragma omp parallel shared(scalar_p1) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p1) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = f_k[i] * f_k[i];
+                scalar_p1 += tmp;
+            }
+        }
+
+
+
+        tmp = scalar_p1 / beta_znam; //сама дробь
+
+        //Вектор направления s_k
+        for (int i = 0; i < size; i++)
+        {
+            s_k[i] = -f_k[i] + (tmp * s_k[i]);
+        }
+
+
+        //Вычисление смещения величины
+        scalar_p1 = 0;
+        scalar_p2 = 0;
+
+        //Знаменатель Матрица на вектор
+        chunk = 50;
+#pragma omp parallel shared(tmp_vec) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) nowait
+            for (int i = 0; i < A.N; i++)
+            {
+                tmp = 0;
+                for (int j = 0; j < A.N; j++) {
+                    auto el = A[i][j];
+
+                    tmp += el * s_k[j];
+
+
+                }
+                tmp_vec[i] = tmp;
+            }
+        }
+
+        // Знаменатель скалярное
+        chunk = 1000;
+#pragma omp parallel shared(scalar_p2) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p2) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = s_k[i] * tmp_vec[i];
+                scalar_p2 += tmp;
+            }
+        }
+
+
+        //Числитель
+
+#pragma omp parallel shared(scalar_p1) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p1) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = f_k[i] * s_k[i];
+                scalar_p1 += tmp;
+            }
+        }
+
+        tmp = scalar_p1 / scalar_p2; //Дробь
+        //Новый x_k
+
+        for (int i = 0; i < size; i++)
+        {
+            x_k[i] = x_k[i] - tmp * s_k[i];
+        }
+        std::cout << "\n";
+        for (int i = 0; i < size; i++)
+        {
+            std::cout << x_k[i] << "\n";
+        }
+    }while (Iteration < 10000);
+
+    std::cout << "\n";
+    for (int i = 0; i < size; i++)
+    {
+        std::cout << x_k[i] << "\n";
+    }
     
     /*
 
