@@ -1,7 +1,10 @@
 ﻿#include <iostream>
+#include <cstdlib>
 #include <fstream>
 #include <omp.h>
+#include <Windows.h>
 
+#define TOCHN 0.5
 
 struct MyMatrix
 {
@@ -24,6 +27,7 @@ struct MyMatrix
 
 
 
+
 void test_1();
 void test_2();
 void test_3(MyMatrix A, double* b);
@@ -33,7 +37,7 @@ void grad_wiki(MyMatrix A, double* b);
 MyMatrix& readFile()
 {
     
-    std::ifstream file("bcsstk38.mtx");
+    std::ifstream file("nasa4704.mtx");
     int num_row, num_col, num_lines;
 
     // Ignore comments headers
@@ -67,7 +71,7 @@ MyMatrix& readFile()
 
 int main()
 {
-
+    
     MyMatrix matrix = readFile();
     double* b = new double[matrix.N];
     for (size_t i = 0; i < matrix.N; i++)
@@ -91,8 +95,34 @@ int main()
     b[0] = 2;
     b[1] = -2;
     b[2] = 2;*/
+    omp_set_dynamic(0);
+    omp_set_num_threads(1);
+    std::cout << "   1 th \n";
     grad_wiki(matrix, b);
 
+    Sleep(300000);
+
+    std::cout << "   2 th \n";
+    omp_set_num_threads(2);
+    grad_wiki(matrix, b);
+
+    Sleep(300000);
+
+    std::cout << "   4 th \n";
+    omp_set_num_threads(4);
+    grad_wiki(matrix, b);
+
+    Sleep(300000);
+
+    std::cout << "   8 th \n";
+    omp_set_num_threads(8);
+    grad_wiki(matrix, b);
+
+    Sleep(300000);
+
+    std::cout << "   16 th \n";
+    omp_set_num_threads(16);
+    grad_wiki(matrix, b);
    
 }
 
@@ -257,24 +287,19 @@ void test_3(MyMatrix A, double* b)
 
 void grad_wiki(MyMatrix A, double* b)
 {
-    omp_set_dynamic(0);
-    omp_set_num_threads(16);
-
+    double min = 99999;
     int size = A.N;
     double start = omp_get_wtime();
     double* x_k = new double[size];
-    //double* x_k_prev = new double[size];
-    //double* s_k_prev = new double[size];
-
     double* r_k = new double[size];
     double* z_k = new double[size];
-    //double* f_k_prev = new double[size];
 
     double* tmp_vec = new double[size];
 
-    double tmp, scalar_p1, scalar_p2, beta_znam, a_k, b_k;
-    int chunk;
+    double tmp, scalar_p1, scalar_p2, beta_znam, a_k, b_k, b_norm;
+    int chunk = 1000;
 
+    b_norm = 0;
 
     //Начальное приближение
     std::fill(x_k, x_k + size, 0.);
@@ -284,6 +309,15 @@ void grad_wiki(MyMatrix A, double* b)
         //z_k[i] = b[i];
     }
 
+    //Норма b
+#pragma omp parallel shared(b_norm) private(tmp)
+    {
+#pragma omp for schedule(dynamic, chunk) reduction(+:b_norm) nowait
+        for (int i = 0; i < size; i++) {
+            tmp = b[i] * b[i];
+            b_norm += tmp;
+        }
+    }
     
     int Iteration = 0;
     do {
@@ -332,12 +366,20 @@ void grad_wiki(MyMatrix A, double* b)
         a_k = scalar_p1 / scalar_p2;
 
         //Вычисление x_k
-        for (int i = 0; i < size; i++)
+
+#pragma omp parallel shared(r_k) private(tmp)
         {
-            x_k[i] = x_k[i] + a_k * z_k[i];
+#pragma omp for schedule(dynamic, chunk) nowait
+            for (int i = 0; i < size; i++) {
+                x_k[i] = x_k[i] + a_k * z_k[i];
+            }
         }
 
-        chunk = 1000;
+        //for (int i = 0; i < size; i++)
+        //{
+        //    x_k[i] = x_k[i] + a_k * z_k[i];
+        //}
+
         scalar_p1 = scalar_p2 = 0;
 
         //Вычисляем beta
@@ -352,11 +394,13 @@ void grad_wiki(MyMatrix A, double* b)
         }
 
         //Вычисление r_k
+        
+        
         for (int i = 0; i < size; i++)
         {
             r_k[i] = r_k[i] - a_k * tmp_vec[i];
         }
-
+        
 
        
  
@@ -376,27 +420,205 @@ void grad_wiki(MyMatrix A, double* b)
 
         b_k = scalar_p1 / scalar_p2; //сама дробь
 
+
         for (int i = 0; i < size; i++)
         {
             z_k[i] = r_k[i] + b_k * z_k[i];
         }
-
-
         
-        //std::cout << Iteration << "\n";
+        //проверяем невязку
+
+        //Норма r_k = scalar_p2
+
+
+        tmp = scalar_p2 / b_norm;
+        //std::cout << tmp << "   " << min << "\n";
+        if (tmp < min)
+        {
+            std::cout << tmp << "\n";
+            min = tmp;
+        }
+        //std::cout << scalar_p2 / b_norm << "\n";
 
         /*for (int i = 0; i < size; i++)
         {
             std::cout << x_k[i] << "\n";
         }*/
-    } while (Iteration < 100);
+    } while (TOCHN < (tmp));
 
     /*std::cout << "\n";
     for (int i = 0; i < size; i++)
     {
         std::cout << x_k[i] << "\n";
     }*/
-
+    std::cout << "\n " << Iteration;
     std::cout <<"\n "<< omp_get_wtime() - start;
+
+}
+
+
+
+void grad_pred_wiki(MyMatrix A, double* b)
+{
+
+    int size = A.N;
+    double start = omp_get_wtime();
+    double* x_k = new double[size];
+    double* r_k = new double[size];
+    double* z_k = new double[size];
+
+    double* tmp_vec = new double[size];
+
+    double tmp, scalar_p1, scalar_p2, beta_znam, a_k, b_k, b_norm;
+    int chunk = 1000;
+
+    b_norm = 0;
+
+    //Начальное приближение
+    std::fill(x_k, x_k + size, 0.);
+    for (size_t i = 0; i < size; i++)
+    {
+        z_k[i] = r_k[i] = b[i];
+        //z_k[i] = b[i];
+    }
+
+    //Норма b
+#pragma omp parallel shared(b_norm) private(tmp)
+    {
+#pragma omp for schedule(dynamic, chunk) reduction(+:b_norm) nowait
+        for (int i = 0; i < size; i++) {
+            tmp = b[i] * b[i];
+            b_norm += tmp;
+        }
+    }
+
+    int Iteration = 0;
+    do {
+        Iteration++;
+
+        //Вычисляем a_k
+
+
+        //Вычисление A * z_k-1
+        chunk = 50;
+#pragma omp parallel shared(z_k) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) nowait
+            for (int i = 0; i < A.N; i++)
+            {
+                tmp = 0;
+                for (int j = 0; j < A.N; j++) {
+                    tmp += A[i][j] * z_k[j];
+                }
+                tmp_vec[i] = tmp;
+            }
+        }
+
+        //скалярное произведение r_k-1 * r_k-1
+        chunk = 1000;
+        scalar_p1 = scalar_p2 = 0;
+#pragma omp parallel shared(scalar_p1) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p1) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = r_k[i] * r_k[i];
+                scalar_p1 += tmp;
+            }
+        }
+
+        //Вычисление знаметаеля tmp_vec * z_k-1
+#pragma omp parallel shared(scalar_p2) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p2) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = tmp_vec[i] * r_k[i];
+                scalar_p2 += tmp;
+            }
+        }
+
+        a_k = scalar_p1 / scalar_p2;
+
+        //Вычисление x_k
+
+#pragma omp parallel shared(r_k) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) nowait
+            for (int i = 0; i < size; i++) {
+                x_k[i] = x_k[i] + a_k * z_k[i];
+            }
+        }
+
+        //for (int i = 0; i < size; i++)
+        //{
+        //    x_k[i] = x_k[i] + a_k * z_k[i];
+        //}
+
+        scalar_p1 = scalar_p2 = 0;
+
+        //Вычисляем beta
+        //скалярное произведение знаменатель  scalar_p2 для beta
+#pragma omp parallel shared(scalar_p2) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p2) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = r_k[i] * r_k[i];
+                scalar_p2 += tmp;
+            }
+        }
+
+        //Вычисление r_k
+
+
+        for (int i = 0; i < size; i++)
+        {
+            r_k[i] = r_k[i] - a_k * tmp_vec[i];
+        }
+
+
+
+
+        //скалярное произведение числитель  scalar_p1
+#pragma omp parallel shared(scalar_p1) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p1) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = r_k[i] * r_k[i];
+                scalar_p1 += tmp;
+            }
+        }
+
+
+
+
+
+        b_k = scalar_p1 / scalar_p2; //сама дробь
+
+
+        for (int i = 0; i < size; i++)
+        {
+            z_k[i] = r_k[i] + b_k * z_k[i];
+        }
+
+        //проверяем невязку
+
+        //Норма r_k = scalar_p2
+
+
+
+        //std::cout << scalar_p2 / b_norm << "\n";
+
+        /*for (int i = 0; i < size; i++)
+        {
+            std::cout << x_k[i] << "\n";
+        }*/
+    } while (TOCHN < (scalar_p2 / b_norm));
+
+    /*std::cout << "\n";
+    for (int i = 0; i < size; i++)
+    {
+        std::cout << x_k[i] << "\n";
+    }*/
+    std::cout << "\n " << Iteration;
+    std::cout << "\n " << omp_get_wtime() - start;
 
 }
