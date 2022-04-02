@@ -28,6 +28,7 @@ void test_1();
 void test_2();
 void test_3(MyMatrix A, double* b);
 void grad(MyMatrix A, double* b);
+void grad_wiki(MyMatrix A, double* b);
 
 MyMatrix& readFile()
 {
@@ -65,55 +66,17 @@ MyMatrix& readFile()
 }
 
 int main()
-{/*
-    std::ifstream file("bcsstm34.mtx");
-    int num_row, num_col, num_lines;
+{
 
-    // Ignore comments headers
-    while (file.peek() == '%') file.ignore(2048, '\n');
-
-    // Read number of rows and columns
-    file >> num_row >> num_col >> num_lines;
-    std::cout << num_col << "     " << num_row;
-
-    // Create 2D array and fill with zeros
-    double* matrix;
-    matrix = new double[num_row * num_col];
-    std::fill(matrix, matrix + num_row * num_col, 0.);
-
-        // fill the matrix with data
-        for (int l = 0; l < num_lines; l++)
-        {
-            double data;
-            int row, col;
-            file >> row >> col >> data;
-            matrix[(row - 1) + (col - 1) * num_row] = data;
-        }
-
-    file.close();
-    */
-    
-    // Вычисляем сумму квадратов элементов вектора F
-    /*
-    CrsMatrix matrix = readFile();
+    MyMatrix matrix = readFile();
     double* b = new double[matrix.N];
     for (size_t i = 0; i < matrix.N; i++)
     {
         b[i] = std::rand();
     }
-    test_3(matrix, b);*/
 
 
-    /*MyMatrix matrix = readFile();
-    double* b = new double[matrix.N];
-    for (size_t i = 0; i < matrix.N; i++)
-    {
-        b[i] = std::rand();
-    }*/
-    //test_3(matrix, b); 
-
-
-    MyMatrix matrix(3);
+    /*MyMatrix matrix(3);
     matrix[0][0] = 2;
     matrix[0][1] = 1;
     matrix[0][2] = 1;
@@ -127,54 +90,10 @@ int main()
     double* b = new double[matrix.N];
     b[0] = 2;
     b[1] = -2;
-    b[2] = 2;
-    grad(matrix, b);
+    b[2] = 2;*/
+    grad_wiki(matrix, b);
 
-    /*
-    // Задаем начальное приближение корней
-#pragma omp parallel for
-    for (i = 0; i < size; i++) {
-        x_k[i] = 0;
-    }
-
-#pragma omp parallel for
-    for (i = 0; i < size; i++) {
-        d_k[i] = 0;
-    }
-
-#pragma omp parallel for
-    for (i = 0; i < size; i++) {
-        g_k[i] = 0;
-    }*/
-
-    /*
-    CrsMatrix matrix = readFile();
-
-    double* x_k = new double[matrix.N];
-    double* x_k_prev = new double[matrix.N];
-    std::fill(x_k_prev, x_k_prev + matrix.N, 0.);
-
-
-    //вычисление
-    //пусть n циклов хватит
-
-    for (size_t i = 0; i < matrix.N; i++)
-    {
-        std::fill(x_k, x_k + matrix.N, 0.);
-        
-    }
-
-
-    /*
-    for (int i = 0; i < num_row; i++)
-    {
-        for (int j = 0; j < num_col; j++)
-            if (matrix[i + j * num_row] != 0)
-
-                std::cout << i+1 << " " << j+1 << " " << matrix[i + j * num_row] << "\n";
-    }
-    */
-
+   
 }
 
 //скалярное произведение тест  ~~1,85
@@ -336,24 +255,24 @@ void test_3(MyMatrix A, double* b)
     }
 }
 
-
-
-void grad(MyMatrix A, double* b)
+void grad_wiki(MyMatrix A, double* b)
 {
+    omp_set_dynamic(0);
+    omp_set_num_threads(16);
+
     int size = A.N;
     double start = omp_get_wtime();
     double* x_k = new double[size];
     //double* x_k_prev = new double[size];
-
-    double* s_k = new double[size];
     //double* s_k_prev = new double[size];
 
-    double* f_k = new double[size];
+    double* r_k = new double[size];
+    double* z_k = new double[size];
     //double* f_k_prev = new double[size];
 
     double* tmp_vec = new double[size];
 
-    double tmp, scalar_p1, scalar_p2, beta_znam;
+    double tmp, scalar_p1, scalar_p2, beta_znam, a_k, b_k;
     int chunk;
 
 
@@ -361,257 +280,123 @@ void grad(MyMatrix A, double* b)
     std::fill(x_k, x_k + size, 0.);
     for (size_t i = 0; i < size; i++)
     {
-        s_k[i] = b[i];
-        f_k[i] = -b[i];
+        z_k[i] = r_k[i] = b[i];
+        //z_k[i] = b[i];
     }
 
-    //вычислим x_1
-    scalar_p1 = 0;
-    scalar_p2 = 0;
-
-    //Знаменатель Матрица на вектор
-    chunk = 50;
-#pragma omp parallel shared(s_k) private(tmp)
-    {
-#pragma omp for schedule(dynamic, chunk) nowait
-        for (int i = 0; i < A.N; i++)
-        {
-            tmp = 0;
-            for (int j = 0; j < A.N; j++) {
-                auto el = A[i][j];
-
-                tmp += el * s_k[j];
-
-
-            }
-            tmp_vec[i] = tmp;
-        }
-    }
-
-    // Знаменатель скалярное
-    chunk = 1000;
-#pragma omp parallel shared(scalar_p2) private(tmp)
-    {
-#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p2) nowait
-        for (int i = 0; i < size; i++) {
-            tmp = s_k[i] * tmp_vec[i];
-            scalar_p2 += tmp;
-        }
-    }
-
-
-    //Числитель
-
-#pragma omp parallel shared(scalar_p1) private(tmp)
-    {
-#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p1) nowait
-        for (int i = 0; i < size; i++) {
-            tmp = f_k[i] * s_k[i];
-            scalar_p1 += tmp;
-        }
-    }
-
-    tmp = scalar_p1 / scalar_p2; //Дробь
-    //Новый x_k
-
-    for (int i = 0; i < size; i++)
-    {
-        x_k[i] = x_k[i] - tmp * s_k[i];
-    }
-
-
-
-
+    
     int Iteration = 0;
     do {
         Iteration++;
 
-        //скалярное произведение знаменатель  beta_znam
-        chunk = 1000;
-        beta_znam = 0;
-#pragma omp parallel shared(beta_znam) private(tmp)
-        {
-#pragma omp for schedule(dynamic, chunk) reduction(+:beta_znam) nowait
-            for (int i = 0; i < size; i++) {
-                tmp = f_k[i] * f_k[i];
-                beta_znam += tmp;
-            }
-        }
+        //Вычисляем a_k
 
-        //Вычисление градиента f
+
+        //Вычисление A * z_k-1
         chunk = 50;
-#pragma omp parallel shared(f_k) private(tmp)
+#pragma omp parallel shared(z_k) private(tmp)
         {
 #pragma omp for schedule(dynamic, chunk) nowait
             for (int i = 0; i < A.N; i++)
             {
                 tmp = 0;
                 for (int j = 0; j < A.N; j++) {
-                    auto el = A[i][j];
-
-                    tmp += el * x_k[j];
-
-
-                }
-                f_k[i] = tmp - b[i];
-            }
-        }
-
-
-        //Вычисление вектора направления
-        chunk = 1000;
-        scalar_p1 = 0;
-        scalar_p2 = 0;
-        //скалярное произведение числитель  scalar_p1
-#pragma omp parallel shared(scalar_p1) private(tmp)
-        {
-#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p1) nowait
-            for (int i = 0; i < size; i++) {
-                tmp = f_k[i] * f_k[i];
-                scalar_p1 += tmp;
-            }
-        }
-
-
-
-        tmp = scalar_p1 / beta_znam; //сама дробь
-
-        //Вектор направления s_k
-        for (int i = 0; i < size; i++)
-        {
-            s_k[i] = -f_k[i] + (tmp * s_k[i]);
-        }
-
-
-        //Вычисление смещения величины
-        scalar_p1 = 0;
-        scalar_p2 = 0;
-
-        //Знаменатель Матрица на вектор
-        chunk = 50;
-#pragma omp parallel shared(tmp_vec) private(tmp)
-        {
-#pragma omp for schedule(dynamic, chunk) nowait
-            for (int i = 0; i < A.N; i++)
-            {
-                tmp = 0;
-                for (int j = 0; j < A.N; j++) {
-                    auto el = A[i][j];
-
-                    tmp += el * s_k[j];
-
-
+                    tmp += A[i][j] * z_k[j];
                 }
                 tmp_vec[i] = tmp;
             }
         }
 
-        // Знаменатель скалярное
+        //скалярное произведение r_k-1 * r_k-1
         chunk = 1000;
-#pragma omp parallel shared(scalar_p2) private(tmp)
-        {
-#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p2) nowait
-            for (int i = 0; i < size; i++) {
-                tmp = s_k[i] * tmp_vec[i];
-                scalar_p2 += tmp;
-            }
-        }
-
-
-        //Числитель
-
+        scalar_p1 = scalar_p2 = 0;
 #pragma omp parallel shared(scalar_p1) private(tmp)
         {
 #pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p1) nowait
             for (int i = 0; i < size; i++) {
-                tmp = f_k[i] * s_k[i];
+                tmp = r_k[i] * r_k[i];
                 scalar_p1 += tmp;
             }
         }
 
-        tmp = scalar_p1 / scalar_p2; //Дробь
-        //Новый x_k
+        //Вычисление знаметаеля tmp_vec * z_k-1
+#pragma omp parallel shared(scalar_p2) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p2) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = tmp_vec[i] * r_k[i];
+                scalar_p2 += tmp;
+            }
+        }
+
+        a_k = scalar_p1 / scalar_p2;
+
+        //Вычисление x_k
+        for (int i = 0; i < size; i++)
+        {
+            x_k[i] = x_k[i] + a_k * z_k[i];
+        }
+
+        chunk = 1000;
+        scalar_p1 = scalar_p2 = 0;
+
+        //Вычисляем beta
+        //скалярное произведение знаменатель  scalar_p2 для beta
+#pragma omp parallel shared(scalar_p2) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p2) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = r_k[i] * r_k[i];
+                scalar_p2 += tmp;
+            }
+        }
+
+        //Вычисление r_k
+        for (int i = 0; i < size; i++)
+        {
+            r_k[i] = r_k[i] - a_k * tmp_vec[i];
+        }
+
+
+       
+ 
+        //скалярное произведение числитель  scalar_p1
+#pragma omp parallel shared(scalar_p1) private(tmp)
+        {
+#pragma omp for schedule(dynamic, chunk) reduction(+:scalar_p1) nowait
+            for (int i = 0; i < size; i++) {
+                tmp = r_k[i] * r_k[i];
+                scalar_p1 += tmp;
+            }
+        }
+
+
+
+
+
+        b_k = scalar_p1 / scalar_p2; //сама дробь
 
         for (int i = 0; i < size; i++)
         {
-            x_k[i] = x_k[i] - tmp * s_k[i];
+            z_k[i] = r_k[i] + b_k * z_k[i];
         }
-        std::cout << "\n";
-        for (int i = 0; i < size; i++)
+
+
+        
+        //std::cout << Iteration << "\n";
+
+        /*for (int i = 0; i < size; i++)
         {
             std::cout << x_k[i] << "\n";
-        }
-    }while (Iteration < 10000);
+        }*/
+    } while (Iteration < 100);
 
-    std::cout << "\n";
+    /*std::cout << "\n";
     for (int i = 0; i < size; i++)
     {
         std::cout << x_k[i] << "\n";
-    }
-    
-    /*
+    }*/
 
-    int Iteration = 0;
-    do {
-        Iteration++;
-        // Вычисляем числитель и знаменатель для коэффициента
-        // alpha = (rk-1,rk-1)/(Azk-1,zk-1) 
-        Spz = 0;
-        Spr = 0;
+    std::cout <<"\n "<< omp_get_wtime() - start;
 
-
-        for (i = 0; i < size1 - 1; i++)
-        {
-            Sz[i] = 0;
-            for (j = iptr[i]; j < iptr[i + 1]; j++)
-                Sz[i] += Zk[jptr[j]] * aelem[j];
-        }
-
-
-
-        for (i = 0; i < size1 - 1; i++) {
-
-            Spz += Sz[i] * Zk[i];
-            Spr += Rk[i] * Rk[i];
-        }
-        alpha = Spr / Spz;          //    alpha    
-
-
-                                    // Вычисляем вектор решения: xk = xk-1+ alpha * zk-1,
-                                    //вектор невязки: rk = rk-1 - alpha * A * zk-1 и числитель для betaa равный (rk,rk) 
-        Spr1 = 0;
-
-        for (i = 0; i < size1 - 1; i++) {
-            Xk[i] += alpha * Zk[i];
-            Rk[i] -= alpha * Sz[i];
-            Spr1 += Rk[i] * Rk[i];
-
-        }
-
-        kl++;
-
-
-        // Вычисляем  beta  
-        beta = Spr1 / Spr;
-
-
-        // Вычисляем вектор спуска: zk = rk+ beta * zk-1 
-
-        for (i = 0; i < size1 - 1; i++)
-            Zk[i] = Rk[i] + beta * Zk[i];
-    }
-    // Проверяем условие выхода из итерационного цикла  
-    while (Spr1 / mf > toch * toch && Iteration < max_iter);
-    ofstream file1("resh1000.txt");
-#pragma omp critical 
-    {
-        /*cout << "Вектор - решение" << endl;
-        for (int i = 0; i < size1-1; i++)
-        {
-            cout << Xk[i] << endl;
-            file1 << Xk[i] << endl;
-        }*//*
-    }
-    file1.close();
-    delete[] Xk, Rk, Sz, Zk;*/
 }
