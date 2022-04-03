@@ -4,7 +4,7 @@
 #include <omp.h>
 #include <Windows.h>
 
-#define TOCHN 0.5
+#define TOCHN 0.001
 
 struct MyMatrix
 {
@@ -31,13 +31,12 @@ struct MyMatrix
 void test_1();
 void test_2();
 void test_3(MyMatrix A, double* b);
-void grad(MyMatrix A, double* b);
-void grad_wiki(MyMatrix A, double* b);
+double grad_wiki(MyMatrix A, double* b);
 
 MyMatrix& readFile()
 {
     
-    std::ifstream file("nasa4704.mtx");
+    std::ifstream file("bcsstm34.mtx");
     int num_row, num_col, num_lines;
 
     // Ignore comments headers
@@ -95,35 +94,53 @@ int main()
     b[0] = 2;
     b[1] = -2;
     b[2] = 2;*/
-    omp_set_dynamic(0);
-    omp_set_num_threads(1);
-    std::cout << "   1 th \n";
-    grad_wiki(matrix, b);
+    std::ofstream out;
+    double time;
 
+    omp_set_dynamic(0);
+    /*omp_set_num_threads(1);
+    
+    time = grad_wiki(matrix, b);
+    out.open("C:\\Users\\atylt\\Desktop\\res_os.txt", std::ios_base::app);
+    out << "\n   1 th \n";
+    out << time << std::endl;
+    out.close();
     Sleep(300000);
 
     std::cout << "   2 th \n";
     omp_set_num_threads(2);
-    grad_wiki(matrix, b);
-
+    time = grad_wiki(matrix, b);
+    out.open("C:\\Users\\atylt\\Desktop\\res_os.txt", std::ios_base::app);
+    out << "\n   2 th \n";
+    out << time << std::endl;
+    out.close();
     Sleep(300000);
 
     std::cout << "   4 th \n";
     omp_set_num_threads(4);
-    grad_wiki(matrix, b);
-
+    time = grad_wiki(matrix, b);
+    out.open("C:\\Users\\atylt\\Desktop\\res_os.txt", std::ios_base::app);
+    out << "\n   4 th \n";
+    out << time << std::endl;
+    out.close();
     Sleep(300000);
 
     std::cout << "   8 th \n";
     omp_set_num_threads(8);
-    grad_wiki(matrix, b);
-
+    time = grad_wiki(matrix, b);
+    out.open("C:\\Users\\atylt\\Desktop\\res_os.txt", std::ios_base::app);
+    out << "\n   8 th \n";
+    out << time << std::endl;
+    out.close();
     Sleep(300000);
-
+    */
     std::cout << "   16 th \n";
     omp_set_num_threads(16);
-    grad_wiki(matrix, b);
-   
+    time = grad_wiki(matrix, b);
+    out.open("C:\\Users\\atylt\\Desktop\\res_os.txt", std::ios_base::app);
+    out << "\n   16 th \n";
+    out << time << std::endl;
+    out.close();
 }
 
 //скалярное произведение тест  ~~1,85
@@ -285,7 +302,7 @@ void test_3(MyMatrix A, double* b)
     }
 }
 
-void grad_wiki(MyMatrix A, double* b)
+double grad_wiki(MyMatrix A, double* b)
 {
     double min = 99999;
     int size = A.N;
@@ -431,20 +448,20 @@ void grad_wiki(MyMatrix A, double* b)
         //Норма r_k = scalar_p2
 
 
-        tmp = scalar_p2 / b_norm;
+        //tmp = scalar_p2 / b_norm;
         //std::cout << tmp << "   " << min << "\n";
-        if (tmp < min)
+        /*if (tmp < min)
         {
             std::cout << tmp << "\n";
             min = tmp;
-        }
+        }*/
         //std::cout << scalar_p2 / b_norm << "\n";
 
         /*for (int i = 0; i < size; i++)
         {
             std::cout << x_k[i] << "\n";
         }*/
-    } while (TOCHN < (tmp));
+    } while (TOCHN < (scalar_p2 / b_norm));
 
     /*std::cout << "\n";
     for (int i = 0; i < size; i++)
@@ -452,7 +469,7 @@ void grad_wiki(MyMatrix A, double* b)
         std::cout << x_k[i] << "\n";
     }*/
     std::cout << "\n " << Iteration;
-    std::cout <<"\n "<< omp_get_wtime() - start;
+    return (omp_get_wtime() - start);
 
 }
 
