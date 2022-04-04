@@ -33,10 +33,10 @@ void test_2();
 void test_3(MyMatrix A, double* b);
 double grad_wiki(MyMatrix A, double* b);
 
-MyMatrix& readFile()
+MyMatrix* readFile()
 {
     
-    std::ifstream file("bcsstm34.mtx");
+    std::ifstream file("msc04515.mtx");
     int num_row, num_col, num_lines;
 
     // Ignore comments headers
@@ -46,8 +46,9 @@ MyMatrix& readFile()
     file >> num_row >> num_col >> num_lines;
     std::cout << num_col << "     " << num_row;
 
-    MyMatrix matrix(num_col);
-    matrix.size = num_lines * 2;
+    MyMatrix *matrix;
+    matrix = new MyMatrix(num_col);
+    matrix->size = num_lines * 2;
 
 
     // Create 2D array and fill with zeros
@@ -58,10 +59,10 @@ MyMatrix& readFile()
         double data;
         int row, col;
         file >> row >> col >> data;
-        matrix[row-1][col-1] = data;
+        (*matrix)[row-1][col-1] = data;
 
         //так как симметричная
-        matrix[col-1][row-1] = data;
+        (*matrix)[col - 1][row - 1] = data;
     }
 
     file.close();
@@ -71,7 +72,7 @@ MyMatrix& readFile()
 int main()
 {
     
-    MyMatrix matrix = readFile();
+    MyMatrix matrix = *readFile();
     double* b = new double[matrix.N];
     for (size_t i = 0; i < matrix.N; i++)
     {
@@ -98,14 +99,14 @@ int main()
     double time;
 
     omp_set_dynamic(0);
-    omp_set_num_threads(1);
+    /*omp_set_num_threads(1);
     
     time = grad_wiki(matrix, b);
     out.open("C:\\Users\\atylt\\Desktop\\res_os.txt", std::ios_base::app);
     out << "\n   1 th \n";
     out << time << std::endl;
     out.close();
-    Sleep(300000);
+    //Sleep(300000);
 
     std::cout << "   2 th \n";
     omp_set_num_threads(2);
@@ -114,7 +115,7 @@ int main()
     out << "\n   2 th \n";
     out << time << std::endl;
     out.close();
-    Sleep(300000);
+    //Sleep(300000);
 
     std::cout << "   4 th \n";
     omp_set_num_threads(4);
@@ -123,7 +124,7 @@ int main()
     out << "\n   4 th \n";
     out << time << std::endl;
     out.close();
-    Sleep(300000);
+    //Sleep(300000);
 
     std::cout << "   8 th \n";
     omp_set_num_threads(8);
@@ -132,7 +133,7 @@ int main()
     out << "\n   8 th \n";
     out << time << std::endl;
     out.close();
-    Sleep(300000);
+    //Sleep(300000);*/
     
     std::cout << "   16 th \n";
     omp_set_num_threads(16);
@@ -468,7 +469,7 @@ double grad_wiki(MyMatrix A, double* b)
     {
         std::cout << x_k[i] << "\n";
     }*/
-    std::cout << "\n " << Iteration;
+    //std::cout << "\n " << Iteration;
     return (omp_get_wtime() - start);
 
 }
