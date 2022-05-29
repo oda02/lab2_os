@@ -3,8 +3,14 @@
 #include <fstream>
 #include <omp.h>
 #include <Windows.h>
+#include <vector>
+#include <math.h>
+//            0.0000000000001
+#define TOCHN 0.0000000000001
 
-#define TOCHN 0.001
+
+//msc04515.mtx
+//crystk01.mtx
 
 struct MyMatrix
 {
@@ -31,7 +37,7 @@ struct MyMatrix
 void test_1();
 void test_2();
 void test_3(MyMatrix A, double* b);
-double grad_wiki(MyMatrix A, double* b);
+std::pair<double, double> grad_wiki(MyMatrix A, double* b);
 
 MyMatrix* readFile()
 {
@@ -78,27 +84,38 @@ int main()
     {
         b[i] = std::rand();
     }
+    
+    /*
+    std::vector<int> all_num_threads = { 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,
+        32, 64, 128, 256, 512, 1024, 2048, 4096 };*/
+    std::vector<int> all_num_threads = { 16, 16 };
 
 
-    /*MyMatrix matrix(3);
-    matrix[0][0] = 2;
-    matrix[0][1] = 1;
-    matrix[0][2] = 1;
-    matrix[1][0] = 1;
-    matrix[1][1] = -1;
-    matrix[1][2] = 0;
-    matrix[2][0] = 3;
-    matrix[2][1] = -1;
-    matrix[2][2] = 2;
 
-    double* b = new double[matrix.N];
-    b[0] = 2;
-    b[1] = -2;
-    b[2] = 2;*/
     std::ofstream out;
     double time;
 
+    out.open("C:\\Users\\atylt\\Desktop\\res_os.txt", std::ios_base::app);
+    out <<0.0000000006674 << "\n";
+    out.close();
+
     omp_set_dynamic(0);
+    /*
+    std::cout << "   16 th \n";
+    omp_set_num_threads(16);
+    time = grad_wiki(matrix, b);
+    std::cout << time;*/
+
+    for (int thrds: all_num_threads)
+    {
+        std::cout << thrds << "\n";
+        omp_set_num_threads(thrds);
+        auto res = grad_wiki(matrix, b);
+        time = res.first;
+        out.open("C:\\Users\\atylt\\Desktop\\res_os.txt", std::ios_base::app);
+        out << thrds << "  -  " << time << "   sko: " << res.second << "\n";
+        out.close();
+    }
     /*omp_set_num_threads(1);
     
     time = grad_wiki(matrix, b);
@@ -135,13 +152,7 @@ int main()
     out.close();
     //Sleep(300000);*/
     
-    std::cout << "   16 th \n";
-    omp_set_num_threads(16);
-    time = grad_wiki(matrix, b);
-    out.open("C:\\Users\\atylt\\Desktop\\res_os.txt", std::ios_base::app);
-    out << "\n   16 th \n";
-    out << time << std::endl;
-    out.close();
+    
 }
 
 //скалярное произведение тест  ~~1,85
@@ -303,7 +314,7 @@ void test_3(MyMatrix A, double* b)
     }
 }
 
-double grad_wiki(MyMatrix A, double* b)
+std::pair<double, double> grad_wiki(MyMatrix A, double* b)
 {
     double min = 99999;
     int size = A.N;
@@ -463,13 +474,37 @@ double grad_wiki(MyMatrix A, double* b)
             std::cout << x_k[i] << "\n";
         }*/
     } while (TOCHN < (scalar_p2 / b_norm));
-
-    /*std::cout << "\n";
+    //while (Iteration < 6300);
+    /*
+    std::cout << "\n";
     for (int i = 0; i < size; i++)
     {
         std::cout << x_k[i] << "\n";
-    }*/
-    //std::cout << "\n " << Iteration;
-    return (omp_get_wtime() - start);
+    }
+    std::cout << "\n " << Iteration;*/
+
+    chunk = 50;
+#pragma omp parallel shared(x_k) private(tmp)
+    {
+#pragma omp for schedule(dynamic, chunk) nowait
+        for (int i = 0; i < A.N; i++)
+        {
+            tmp = 0;
+            for (int j = 0; j < A.N; j++) {
+                tmp += A[i][j] * x_k[j];
+            }
+            tmp_vec[i] = tmp;
+        }
+    }
+    double sum = 0;
+    for (int i = 0; i < size; i++)
+    {
+        sum += (tmp_vec[i] - b[i]) * (tmp_vec[i] - b[i]);
+    }
+    double sko = sum / size;
+    sko = sqrt(sko);
+
+    delete[] x_k, r_k, z_k, tmp_vec;
+    return std::pair<double, double>(omp_get_wtime() - start, sko);
 
 }
